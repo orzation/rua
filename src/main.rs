@@ -32,11 +32,12 @@ fn gen_map(rng: &mut ThreadRng, h: usize, w: usize, bomb: usize, init_pos: usize
         (0, -1), (0, 1),
         (1, -1), (1, 0), (1, 1),
     ];
-    let mut map_clone = map.clone();
+    let mut map_clone = vec![0i8; map.len()];
     map.iter()
         .enumerate()
         .filter(|(_, &val)| val == Cell::Bomb as i8)
-        .for_each(|(idx, _)| {
+        .for_each(|(idx, &val)| {
+            map_clone[idx] = val;
             let idx = idx as isize;
             let (x, y) = (idx / w, idx % w);
             dirs.iter().for_each(|(dx, dy)| {
