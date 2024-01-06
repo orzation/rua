@@ -1,4 +1,4 @@
-mod config;
-mod map;
-mod draw;
-mod event;
+pub mod config;
+pub mod map;
+pub mod draw;
+pub mod event;
