@@ -11,12 +11,16 @@ fn main() {
     let mut stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
     draw::clean_output();
 
-    // Game start, choose a difficulty.
-    let option = event::entry_event(init_pos, key_config, stdin, &mut stdout);
+    // Choose a difficulty.
+    let option = event::entry_event(init_pos, &key_config, &stdin, &mut stdout);
     if let None = option {
         // exit from press q.
         return;
     }
-
     draw::clean_output();
+
+    // Game start.
+    let game_config = option.unwrap();
+    let mut rng = rand::thread_rng();
+    event::game_event(&key_config, &game_config, &stdin, &mut stdout, &mut rng)
 }

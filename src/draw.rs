@@ -35,7 +35,7 @@ fn draw_border(pos: &Pos, height: usize, width: usize) -> Pos {
     print!("{}┐", cursor::Goto(x + w, y));
     print!("{}└", cursor::Goto(x, y + h));
     print!("{}┘", cursor::Goto(x + w, y + h));
-    Pos(x, y + w + 1)
+    Pos(x + w, y + h)
 }
 
 /// Draw a menu with given items(lenght limit: 26), just like this:
@@ -86,31 +86,56 @@ pub fn show_menu(pos: &Pos, opts: &Vec<String>, focus_idx: usize) -> Result<Pos,
     Ok(Pos(x + 1 + max_width as u16, y + 1 + max_height as u16))
 }
 
-pub fn show_map(pos: &Pos, game_conf: config::GameConfig, map: &Vec<map::Cell>, show_all: bool) {
+pub enum ShowMode {
+    Normal,
+    All,
+    Win,
+    Lose,
+}
+
+/// Show map, show_mode:
+/// - normal show
+/// - show all
+/// - show win
+/// - show lose
+pub fn show_map(
+    pos: &Pos,
+    game_conf: &config::GameConfig,
+    map: &Vec<map::Cell>,
+    show_mode: ShowMode,
+) -> Pos {
     let Pos(x, y) = *pos;
-    draw_border(&pos, game_conf.height, game_conf.width);
+    let ret_pos = draw_border(&pos, game_conf.height, game_conf.width);
     map.iter().enumerate().for_each(|(idx, cell)| {
         let (dx, dy) = (
             (idx % game_conf.width) as u16,
             (idx / game_conf.width) as u16,
         );
-        let symbol = if show_all {
-            cell.get_content_symbol()
-        } else {
-            cell.to_string()
+        let symbol = match show_mode {
+            ShowMode::Normal => cell.to_string(),
+            ShowMode::All => cell.get_content_symbol(),
+            ShowMode::Win => match cell.content {
+                map::Content::Bomb => map::Surface::Flag.to_string(),
+                _ => cell.get_content_symbol(),
+            },
+            ShowMode::Lose => match cell.content {
+                map::Content::Bomb => cell.get_content_symbol(),
+                _ => cell.to_string(),
+            },
         };
-        print!("{}{}", cursor::Goto(x + dx, y + dy), symbol);
-    })
+        print!("{}{}", cursor::Goto(x + dx + 1, y + dy + 1), symbol);
+    });
+    ret_pos
 }
 
 // Some words that said by ferris.
 const SAYS_DIFFICULTIES: [&'static str; 3] = ["Eazy as fuck.", "It's OK.", "Really?"];
-const SAYS_QUIT: &str = "Bye";
+const SAYS_QUIT: &str = "Bye~";
 const SAYS_START: &str = "Ready?";
 const SAYS_WIN: [&'static str; 2] = ["Win!", "WOW, Genius!"];
 const SAYS_LOSE: [&'static str; 2] = ["BOOM, You Lose!", "BOOM, Loser!"];
 const SAYS_MINE: [&'static str; 2] = ["You're safe", "Rua!!!"];
-const SAYS_FLAG: [&'static str; 2] = ["Good Flag.", "You can't flag here."];
+const SAYS_FLAG: [&'static str; 2] = ["You can't flag here.", "Good Flag."];
 const SAYS_MOVE: [&'static str; 2] = ["Move Move Move!", "Are you sure?"];
 
 ///  Draw a ferris with specific str, just like this:
@@ -157,36 +182,42 @@ fn draw_ferris_with(pos: &Pos, words: &str, mouth: &str, leye: &str, reye: &str)
     return Pos(x, y + 9);
 }
 
-pub fn ferris_say_start(pos: &Pos) -> Pos {
+pub fn ferris_says_start(pos: &Pos) -> Pos {
     draw_ferris_with(pos, SAYS_START, "3", "0", "0")
 }
 
-pub fn ferris_say_win(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_WIN[idx], "3", "^", "^")
+pub fn ferris_says_win(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_WIN[idx % SAYS_WIN.len()], "3", "^", "^")
 }
 
-pub fn ferris_say_lose(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_LOSE[idx], "x", "#", "#")
+pub fn ferris_says_lose(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_LOSE[idx % SAYS_LOSE.len()], "x", "#", "#")
 }
 
-pub fn ferris_say_mine(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_MINE[idx], "o", "0", "0")
+pub fn ferris_says_mine(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_MINE[idx % SAYS_MINE.len()], "o", "0", "0")
 }
 
-pub fn ferris_say_flag(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_FLAG[idx], "u", "o", "o")
+pub fn ferris_says_flag(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_FLAG[idx % SAYS_FLAG.len()], "u", "o", "o")
 }
 
-pub fn ferris_say_move(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_MOVE[idx], "r", "C", "C")
+pub fn ferris_says_move(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_MOVE[idx % SAYS_MOVE.len()], "r", "C", "C")
 }
 
-pub fn ferris_say_quit(pos: &Pos) -> Pos {
+pub fn ferris_says_quit(pos: &Pos) -> Pos {
     draw_ferris_with(pos, SAYS_QUIT, "o", "-", "-")
 }
 
-pub fn ferris_say_difficulty(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_DIFFICULTIES[idx], "w", "o", "o")
+pub fn ferris_says_difficulty(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(
+        pos,
+        SAYS_DIFFICULTIES[idx % SAYS_DIFFICULTIES.len()],
+        "w",
+        "o",
+        "o",
+    )
 }
 
 #[cfg(test)]
