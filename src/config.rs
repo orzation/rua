@@ -35,7 +35,7 @@ pub fn globle_config_from_env() -> GlobleConfig {
 }
 
 /// The configs of game mode.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GameConfig {
     pub height: usize,
     pub width: usize,

@@ -7,7 +7,6 @@ use termion::event::{Event, Key, MouseButton, MouseEvent};
 use termion::input::{MouseTerminal, TermRead};
 use termion::raw::RawTerminal;
 
-use crate::draw::ferris_says_quit;
 use crate::{config, map};
 use crate::{
     config::{GameMode, GlobleConfig},
@@ -15,7 +14,7 @@ use crate::{
 };
 
 pub fn entry_event(
-    init_pos: draw::Pos,
+    init_pos: &draw::Pos,
     key_config: &GlobleConfig,
     stdin: &Stdin,
     stdout: &mut MouseTerminal<RawTerminal<Stdout>>,
@@ -24,9 +23,9 @@ pub fn entry_event(
     let difficultis = vec![GameMode::Simple, GameMode::Normal, GameMode::Hard];
     let difficultis_items: Vec<String> = difficultis.iter().map(|v| v.to_string()).collect();
 
-    let pos = draw::ferris_says_difficulty(&init_pos, selected_item_idx);
-    let last_pos =
-        draw::show_menu(&pos, &difficultis_items, selected_item_idx).expect("cannot show menu");
+    let pos = draw::ferris_says_difficulty(init_pos, selected_item_idx);
+    let last_pos = draw::show_menu(&pos, &difficultis_items, selected_item_idx)
+        .expect("cannot show start menu");
 
     stdout.flush().unwrap();
     for c in stdin.lock().events() {
@@ -42,7 +41,7 @@ pub fn entry_event(
                         } else if char == key_config.down_key {
                             selected_item_idx = selected_item_idx.wrapping_add(1)
                         } else if char == key_config.quit_key {
-                            ferris_says_quit(&pos);
+                            draw::ferris_says_quit(&pos);
                             return None;
                         } else if char == key_config.mine_key {
                             let game_mode = config::GameMode::from_usize(selected_item_idx);
@@ -53,30 +52,40 @@ pub fn entry_event(
                     _ => (),
                 }
                 selected_item_idx %= difficultis_items.len();
-                let pos = draw::ferris_says_difficulty(&init_pos, selected_item_idx);
+                draw::ferris_says_difficulty(init_pos, selected_item_idx);
                 draw::show_menu(&pos, &difficultis_items, selected_item_idx)
-                    .expect("cannot show menu");
+                    .expect("cannot show start menu");
             }
-            Event::Mouse(MouseEvent::Press(btn, x, y)) => match btn {
-                MouseButton::Left => {
-                    let x = (pos.0 + 1).max((last_pos.0 - 1).min(x));
-                    let y = (pos.1 + 1).max((last_pos.1 - 1).min(y));
-                    let selected_item_idx = y - pos.1 - 1;
+            Event::Mouse(MouseEvent::Press(btn, x, y)) => {
+                match btn {
+                    MouseButton::Left => {
+                        let x = (pos.0 + 1).max((last_pos.0 - 1).min(x));
+                        let y = (pos.1 + 1).max((last_pos.1 - 1).min(y));
+                        let selected_item_idx = (y - pos.1 - 1) as usize;
 
-                    let pos = draw::ferris_says_difficulty(&init_pos, selected_item_idx as usize);
-                    draw::show_menu(&pos, &difficultis_items, selected_item_idx as usize)
-                        .expect("cannot show menu");
-                    print!("{}", cursor::Goto(x, y));
+                        let pos = draw::ferris_says_difficulty(init_pos, selected_item_idx);
+                        draw::show_menu(&pos, &difficultis_items, selected_item_idx)
+                            .expect("cannot show start menu");
+                        print!("{}", cursor::Goto(x, y));
 
-                    let game_mode = config::GameMode::from_usize(selected_item_idx as usize);
-                    let game_config = config::GameConfig::from_game_mode(game_mode);
-                    return Some(game_config);
+                        let game_mode = config::GameMode::from_usize(selected_item_idx);
+                        let game_config = config::GameConfig::from_game_mode(game_mode);
+                        return Some(game_config);
+                    }
+                    MouseButton::WheelUp => selected_item_idx = selected_item_idx.wrapping_sub(1),
+                    MouseButton::WheelDown => selected_item_idx = selected_item_idx.wrapping_add(1),
+                    MouseButton::Right => {
+                        draw::ferris_says_quit(init_pos);
+                        return None;
+                    }
+                    _ => (),
                 }
-                _ => {
-                    ferris_says_quit(&pos);
-                    return None;
-                }
-            },
+                selected_item_idx %= difficultis_items.len();
+                // print!("{}", selected_item_idx);
+                draw::ferris_says_difficulty(init_pos, selected_item_idx);
+                draw::show_menu(&pos, &difficultis_items, selected_item_idx)
+                    .expect("cannot show start menu");
+            }
             _ => (),
         }
         stdout.flush().unwrap();
@@ -90,31 +99,30 @@ pub fn game_event(
     stdin: &Stdin,
     stdout: &mut MouseTerminal<RawTerminal<Stdout>>,
     rng: &mut ThreadRng,
-) {
+) -> draw::Pos {
     let mut init_mine = true;
 
+    let mut flag_num = 0;
+    let mut left_cover = game_conf.get_size();
     // init map
     let mut graph_map =
         vec![map::Cell::new(map::Content::Zero, map::Surface::Cover); game_conf.get_size()];
     let init_pos = draw::Pos(1, 1);
     let pos = draw::ferris_says_start(&init_pos);
 
-    // game status.
-    // todo
-    let pos = draw::Pos(pos.0, pos.1 + 1);
+    let pos = draw::show_bomb_status(&pos, game_conf.bomb - flag_num);
 
     let last_pos = draw::show_map(&pos, game_conf, &graph_map, draw::ShowMode::Normal);
     let init_at = draw::Pos(pos.0 + 1, pos.1 + 1);
     let mut now_at = draw::Pos(pos.0 + 1, pos.1 + 1);
     print!("{}", cursor::Goto(now_at.0, now_at.1));
-    let mut left_cover = game_conf.get_size();
-    let mut flag_num = 0;
 
     stdout.flush().unwrap();
     for c in stdin.lock().events() {
         let evt = c.unwrap();
         match evt {
             Event::Key(key) => {
+                draw::ferris_says_move(&init_pos, rng.gen_range(0..2));
                 match key {
                     Key::Up => now_at.1 -= 1,
                     Key::Down => now_at.1 += 1,
@@ -142,12 +150,11 @@ pub fn game_event(
                                 graph_map,
                             ) {
                                 Some(res) => graph_map = res,
-                                None => return,
+                                None => return last_pos,
                             }
                         } else if char == key_conf.flag_key {
                             graph_map = flag_event(
                                 &init_pos,
-                                &pos,
                                 &init_at,
                                 &now_at,
                                 game_conf,
@@ -157,7 +164,7 @@ pub fn game_event(
                             );
                         } else if char == key_conf.quit_key {
                             draw::ferris_says_quit(&init_pos);
-                            return;
+                            return last_pos;
                         }
                     }
                     _ => (),
@@ -185,12 +192,11 @@ pub fn game_event(
                         graph_map,
                     ) {
                         Some(res) => graph_map = res,
-                        None => return,
+                        None => return last_pos,
                     },
                     MouseButton::Right => {
                         graph_map = flag_event(
                             &init_pos,
-                            &pos,
                             &init_at,
                             &now_at,
                             game_conf,
@@ -207,6 +213,7 @@ pub fn game_event(
         }
         stdout.flush().unwrap();
     }
+    last_pos
 }
 
 fn mine_event(
@@ -245,7 +252,6 @@ fn mine_event(
 
 fn flag_event(
     init_pos: &draw::Pos,
-    map_pos: &draw::Pos,
     init_at: &draw::Pos,
     now_at: &draw::Pos,
     conf: &config::GameConfig,
@@ -258,7 +264,84 @@ fn flag_event(
         return graph_map;
     }
     let (graph_map, ok) = map::flag_map(init_at, now_at, conf, graph_map, flag_num);
-    draw::ferris_says_flag(init_pos, ok as usize);
-    draw::show_map(map_pos, conf, &graph_map, draw::ShowMode::Normal);
+    let pos = draw::ferris_says_flag(init_pos, ok as usize);
+    let pos = draw::show_bomb_status(&pos, conf.bomb - *flag_num);
+    draw::show_map(&pos, conf, &graph_map, draw::ShowMode::Normal);
+
     graph_map
+}
+
+/// End menu event, return usize meanings:
+/// 0: retry
+/// 1: back
+pub fn end_event(
+    pos: &draw::Pos,
+    key_conf: &config::GlobleConfig,
+    game_config: &config::GameConfig,
+    stdin: &Stdin,
+    stdout: &mut MouseTerminal<RawTerminal<Stdout>>,
+) -> usize {
+    let init_pos = draw::Pos(1, 1);
+    let pos = draw::Pos(pos.0 + 1, pos.1 - game_config.height as u16 - 1);
+    let opts = vec!["Retry".to_string(), "Go Back".to_string()];
+    let mut selected_item_idx = 0;
+    let last_pos = draw::show_menu(&pos, &opts, selected_item_idx).expect("cannot show end menu");
+
+    stdout.flush().unwrap();
+    for c in stdin.lock().events() {
+        let evt = c.unwrap();
+        match evt {
+            Event::Key(key) => {
+                match key {
+                    Key::Up => selected_item_idx = selected_item_idx.wrapping_sub(1),
+                    Key::Down => selected_item_idx = selected_item_idx.wrapping_add(1),
+                    Key::Char(char) => {
+                        if char == key_conf.up_key {
+                            selected_item_idx = selected_item_idx.wrapping_sub(1)
+                        } else if char == key_conf.down_key {
+                            selected_item_idx = selected_item_idx.wrapping_add(1)
+                        } else if char == key_conf.quit_key {
+                            draw::ferris_says_quit(&init_pos);
+                            return 255;
+                        } else if char == key_conf.mine_key {
+                            return selected_item_idx;
+                        }
+                    }
+                    _ => (),
+                }
+                selected_item_idx %= opts.len();
+                draw::ferris_says_end(&init_pos, selected_item_idx);
+                draw::show_menu(&pos, &opts, selected_item_idx).expect("cannot show end menu");
+            }
+            Event::Mouse(MouseEvent::Press(btn, x, y)) => {
+                match btn {
+                    MouseButton::Left => {
+                        let x = (pos.0 + 1).max((last_pos.0 - 1).min(x));
+                        let y = (pos.1 + 1).max((last_pos.1 - 1).min(y));
+                        let selected_item_idx = (y - pos.1 - 1) as usize;
+
+                        draw::ferris_says_end(&init_pos, selected_item_idx);
+                        draw::show_menu(&pos, &opts, selected_item_idx)
+                            .expect("cannot show end menu");
+                        print!("{}", cursor::Goto(x, y));
+
+                        return selected_item_idx;
+                    }
+                    MouseButton::WheelUp => selected_item_idx = selected_item_idx.wrapping_sub(1),
+                    MouseButton::WheelDown => selected_item_idx = selected_item_idx.wrapping_add(1),
+                    MouseButton::Right => {
+                        draw::ferris_says_quit(&init_pos);
+                        return 255;
+                    }
+                    _ => (),
+                }
+                selected_item_idx %= opts.len();
+                draw::ferris_says_end(&init_pos, selected_item_idx);
+                draw::show_menu(&pos, &opts, selected_item_idx).expect("cannot show end menu");
+            }
+            _ => (),
+        }
+        stdout.flush().unwrap();
+    }
+    255
 }

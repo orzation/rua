@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::iter;
+
 use termion::{clear, color, cursor, style};
 
 use crate::{config, map};
@@ -10,6 +12,12 @@ pub struct Pos(pub u16, pub u16);
 /// Clean all outputs on the screen.
 pub fn clean_output() {
     print!("{}", clear::All)
+}
+
+/// Fix cursor flash every where.
+pub fn put_cursor_bottom() {
+    let (height, _) = termion::terminal_size().unwrap();
+    print!("{}", cursor::Goto(1, height));
 }
 
 /// Draw a box border with positon and size, just like this:
@@ -64,25 +72,29 @@ pub fn show_menu(pos: &Pos, opts: &Vec<String>, focus_idx: usize) -> Result<Pos,
     draw_border(pos, max_height, max_width);
     opts.iter().enumerate().for_each(|(idx, v)| {
         let enum_char = (('a' as u8) + idx as u8) as char;
+        let space: String = iter::repeat(" ").take(max_word_len - v.len()).collect();
         if focus_idx == idx {
             print!(
-                "{}{}{} {}.{} {}",
+                "{}{}{} {}.{} {}{}",
                 color::Fg(color::Black),
                 color::Bg(color::White),
                 cursor::Goto(x + 1, y + 1 + idx as u16),
                 enum_char,
                 v,
+                space,
                 style::Reset
             );
         } else {
             print!(
-                "{} {}.{} ",
+                "{} {}.{} {}",
                 cursor::Goto(x + 1, y + 1 + idx as u16),
                 enum_char,
-                v
+                v,
+                space
             );
         }
     });
+    put_cursor_bottom();
     Ok(Pos(x + 1 + max_width as u16, y + 1 + max_height as u16))
 }
 
@@ -130,11 +142,12 @@ pub fn show_map(
 
 // Some words that said by ferris.
 const SAYS_DIFFICULTIES: [&'static str; 3] = ["Eazy as fuck.", "It's OK.", "Really?"];
+const SAYS_END: [&'static str; 2] = ["One more time!", "Back to menu."];
 const SAYS_QUIT: &str = "Bye~";
 const SAYS_START: &str = "Ready?";
 const SAYS_WIN: [&'static str; 2] = ["Win!", "WOW, Genius!"];
-const SAYS_LOSE: [&'static str; 2] = ["BOOM, You Lose!", "BOOM, Loser!"];
-const SAYS_MINE: [&'static str; 2] = ["You're safe", "Rua!!!"];
+const SAYS_LOSE: [&'static str; 2] = ["You Lose!", "BOOM!"];
+const SAYS_MINE: [&'static str; 2] = ["You're safe.", "Rua!!!"];
 const SAYS_FLAG: [&'static str; 2] = ["You can't flag here.", "Good Flag."];
 const SAYS_MOVE: [&'static str; 2] = ["Move Move Move!", "Are you sure?"];
 
@@ -183,7 +196,7 @@ fn draw_ferris_with(pos: &Pos, words: &str, mouth: &str, leye: &str, reye: &str)
 }
 
 pub fn ferris_says_start(pos: &Pos) -> Pos {
-    draw_ferris_with(pos, SAYS_START, "3", "0", "0")
+    draw_ferris_with(pos, SAYS_START, "v", "0", "0")
 }
 
 pub fn ferris_says_win(pos: &Pos, idx: usize) -> Pos {
@@ -203,7 +216,7 @@ pub fn ferris_says_flag(pos: &Pos, idx: usize) -> Pos {
 }
 
 pub fn ferris_says_move(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_MOVE[idx % SAYS_MOVE.len()], "r", "C", "C")
+    draw_ferris_with(pos, SAYS_MOVE[idx % SAYS_MOVE.len()], "r", "6", "6")
 }
 
 pub fn ferris_says_quit(pos: &Pos) -> Pos {
@@ -218,6 +231,24 @@ pub fn ferris_says_difficulty(pos: &Pos, idx: usize) -> Pos {
         "o",
         "o",
     )
+}
+
+pub fn ferris_says_end(pos: &Pos, idx: usize) -> Pos {
+    draw_ferris_with(pos, SAYS_END[idx % SAYS_END.len()], "v", "$", "$")
+}
+
+pub fn show_bomb_status(pos: &Pos, flag_num: usize) -> Pos {
+    print!("{}{:02}", cursor::Goto(pos.0, pos.1), flag_num);
+    Pos(pos.0, pos.1 + 1)
+}
+
+pub fn show_time_status(pos: &Pos, conf: config::GameConfig, time: usize) -> Pos {
+    print!(
+        "{}{:03}",
+        cursor::Goto(pos.0 + conf.width as u16 - 3, pos.1),
+        time
+    );
+    Pos(pos.0, pos.1 + 1)
 }
 
 #[cfg(test)]
