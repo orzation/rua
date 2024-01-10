@@ -6,10 +6,14 @@ I wrote it, just for practice.
 ## screenshot 
 ||
 |-|
-|![image](https://github.com/orzation/rua/assets/94043894/6dbfd0a9-39c3-489c-a26d-85c3beaf2a09)|
+|![image](https://github.com/orzation/rua/assets/94043894/80edbce2-d498-4741-8fa6-a92032db2e8d)|
+
+
+
 ||
 |-|
 |![image](https://github.com/orzation/rua/assets/94043894/66e66537-da58-4b35-ab71-bc3f276368e4)|
+
 ||
 |-|
 |![image](https://github.com/orzation/rua/assets/94043894/2d88553a-0116-4bce-b78d-d0e553128f56)|
@@ -18,7 +22,7 @@ I wrote it, just for practice.
 ### cargo
 
 ```sh
-cargo install --git https://github.com/orzation/rua
+cargo install --git https://github.com/orzation/rua --branch master
 ```
 
 ## keymap
