@@ -83,7 +83,6 @@ pub fn entry_event(
                     _ => (),
                 }
                 selected_item_idx %= difficultis_items.len();
-                // print!("{}", selected_item_idx);
                 draw::ferris_says_difficulty(init_pos, selected_item_idx);
                 draw::show_menu(&pos, &difficultis_items, selected_item_idx)
                     .expect("cannot show start menu");
@@ -249,8 +248,9 @@ fn mine_event(
         return None;
     }
     if *left_cover == conf.bomb {
+        let pos = draw::ferris_says_win(init_pos, rng.gen_range(0..2));
+        draw::show_bomb_status(&pos, 0);
         draw::show_map(map_pos, conf, &graph_map, draw::ShowMode::Win);
-        draw::ferris_says_win(init_pos, rng.gen_range(0..2));
         return None;
     }
     draw::show_map(map_pos, conf, &graph_map, draw::ShowMode::Normal);

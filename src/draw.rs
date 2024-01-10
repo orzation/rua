@@ -142,7 +142,7 @@ pub fn show_map(
 }
 
 // Some words that said by ferris.
-const SAYS_DIFFICULTIES: [&'static str; 3] = ["Eazy as fuck.", "It's OK.", "Really?"];
+const SAYS_DIFFICULTIES: [&'static str; 3] = ["Eazy as fxxk.", "It's OK.", "Really?"];
 const SAYS_END: [&'static str; 2] = ["One more time!", "Back to menu."];
 const SAYS_QUIT: &str = "Bye~";
 const SAYS_START: &str = "Ready?";
