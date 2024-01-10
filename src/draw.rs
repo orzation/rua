@@ -7,6 +7,7 @@ use termion::{clear, color, cursor, style};
 use crate::{config, map};
 
 /// The position of 2d canvas (x, y).
+#[derive(Clone)]
 pub struct Pos(pub u16, pub u16);
 
 /// Clean all outputs on the screen.
@@ -177,18 +178,18 @@ fn draw_ferris_with(pos: &Pos, words: &str, mouth: &str, leye: &str, reye: &str)
     for i in 0..len + 2 {
         print!("{}{}", cursor::Goto(x + 1 + i as u16, y + 2), '-');
     }
-    print!("{}        \\", cursor::Goto(x, y + 3));
-    print!("{}         \\", cursor::Goto(x, y + 4));
-    print!("{}            _~^~^~_", cursor::Goto(x, y + 5));
+    print!("{}    \\", cursor::Goto(x, y + 3));
+    print!("{}     \\", cursor::Goto(x, y + 4));
+    print!("{}    _~^~^~_", cursor::Goto(x, y + 5));
     print!(
-        "{}        \\) /  {} {}  \\ (/",
+        "{}\\) /  {} {}  \\ (/",
         cursor::Goto(x, y + 6),
         leye,
         reye
     );
-    print!("{}          '_   {}   _'", cursor::Goto(x, y + 7), mouth);
+    print!("{}  '_   {}   _'", cursor::Goto(x, y + 7), mouth);
     print!(
-        "{}          / '-----' \\{}",
+        "{}  / '-----' \\{}",
         cursor::Goto(x, y + 8),
         style::Reset
     );
@@ -242,10 +243,10 @@ pub fn show_bomb_status(pos: &Pos, flag_num: usize) -> Pos {
     Pos(pos.0, pos.1 + 1)
 }
 
-pub fn show_time_status(pos: &Pos, conf: config::GameConfig, time: usize) -> Pos {
+pub fn show_time_status(pos: &Pos, conf: &config::GameConfig, time: usize) -> Pos {
     print!(
         "{}{:03}",
-        cursor::Goto(pos.0 + conf.width as u16 - 3, pos.1),
+        cursor::Goto(pos.0 + conf.width as u16 - 1, pos.1),
         time
     );
     Pos(pos.0, pos.1 + 1)

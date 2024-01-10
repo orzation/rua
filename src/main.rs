@@ -1,6 +1,9 @@
 use std::io::{stdin, stdout};
 
-use rua::{config, draw, event};
+use rua::{
+    config, draw,
+    event::{self},
+};
 use termion::{input::MouseTerminal, raw::IntoRawMode};
 
 fn main() {
@@ -29,7 +32,7 @@ fn main() {
             let pos = event::game_event(&key_config, &game_config, &stdin, &mut stdout, &mut rng);
 
             // End menu.
-            match event::end_event(&pos, &key_config, &game_config,&stdin, &mut stdout) {
+            match event::end_event(&pos, &key_config, &game_config, &stdin, &mut stdout) {
                 0 => continue,
                 1 => break 'game,
                 _ => break 'start,

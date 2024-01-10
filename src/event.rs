@@ -1,4 +1,5 @@
 use std::io::{Stdin, Stdout, Write};
+use std::time::Duration;
 
 use rand::rngs::ThreadRng;
 use rand::Rng;
@@ -6,6 +7,7 @@ use termion::cursor;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use termion::input::{MouseTerminal, TermRead};
 use termion::raw::RawTerminal;
+use tokio::time::interval;
 
 use crate::{config, map};
 use crate::{
@@ -93,7 +95,8 @@ pub fn entry_event(
     None
 }
 
-pub fn game_event(
+#[tokio::main]
+pub async fn game_event(
     key_conf: &config::GlobleConfig,
     game_conf: &config::GameConfig,
     stdin: &Stdin,
@@ -110,6 +113,7 @@ pub fn game_event(
     let init_pos = draw::Pos(1, 1);
     let pos = draw::ferris_says_start(&init_pos);
 
+    let interval_handle = tokio::spawn(time_record_event(pos.clone(), game_conf.clone()));
     let pos = draw::show_bomb_status(&pos, game_conf.bomb - flag_num);
 
     let last_pos = draw::show_map(&pos, game_conf, &graph_map, draw::ShowMode::Normal);
@@ -117,7 +121,7 @@ pub fn game_event(
     let mut now_at = draw::Pos(pos.0 + 1, pos.1 + 1);
     print!("{}", cursor::Goto(now_at.0, now_at.1));
 
-    stdout.flush().unwrap();
+    stdout.lock().flush().unwrap();
     for c in stdin.lock().events() {
         let evt = c.unwrap();
         match evt {
@@ -211,8 +215,11 @@ pub fn game_event(
             }
             _ => (),
         }
-        stdout.flush().unwrap();
+        stdout.lock().flush().unwrap();
     }
+    match tokio::join!(interval_handle) {
+        _ => (),
+    };
     last_pos
 }
 
@@ -344,4 +351,14 @@ pub fn end_event(
         stdout.flush().unwrap();
     }
     255
+}
+
+pub async fn time_record_event(pos: draw::Pos, conf: config::GameConfig) {
+    let mut interval = interval(Duration::from_secs(1));
+    let mut time = 0;
+    loop {
+        interval.tick().await;
+        time += 1;
+        draw::show_time_status(&pos, &conf, time);
+    }
 }
