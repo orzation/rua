@@ -6,12 +6,6 @@ I wrote it, just for practice.
 ## screenshot 
 ||
 |-|
-|![image](https://github.com/orzation/rua/assets/94043894/80edbce2-d498-4741-8fa6-a92032db2e8d)|
-
-
-
-||
-|-|
 |![image](https://github.com/orzation/rua/assets/94043894/66e66537-da58-4b35-ab71-bc3f276368e4)|
 
 ||
