@@ -1,13 +1,15 @@
 #![allow(dead_code)]
 
-use queues::{queue, IsQueue, Queue};
+use std::collections::VecDeque;
+use std::fmt;
+
 use rand::{rngs::ThreadRng, Rng};
 use termion::{color, style};
 
 use crate::{config, draw};
 
 /// The content type of a cell.
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Content {
     Zero,
     One,
@@ -36,29 +38,30 @@ pub struct Cell {
     pub surface: Surface,
 }
 
-impl ToString for Surface {
-    fn to_string(&self) -> String {
+impl fmt::Display for Surface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Surface::Cover => format!("▓"),
-            Surface::Flag => format!("{}P{}", color::Fg(color::Yellow), style::Reset),
-            _ => format!(" "),
+            Surface::Cover => write!(f, "▓"),
+            Surface::Flag => write!(f, "{}P{}", color::Fg(color::Yellow), style::Reset),
+            _ => write!(f, " "),
         }
     }
 }
 
-impl ToString for Content {
-    fn to_string(&self) -> String {
+impl fmt::Display for Content {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Content::Zero => format!(" "),
-            Content::One => format!("{}1{}", color::Fg(color::LightBlue), style::Reset),
-            Content::Two => format!("{}2{}", color::Fg(color::LightGreen), style::Reset),
-            Content::Three => format!("{}3{}", color::Fg(color::LightRed), style::Reset),
-            Content::Four => format!("{}4{}", color::Fg(color::Magenta), style::Reset),
-            Content::Five => format!("{}5{}", color::Fg(color::Red), style::Reset),
-            Content::Six => format!("{}6{}", color::Fg(color::Green), style::Reset),
-            Content::Seven => format!("{}7{}", color::Fg(color::Blue), style::Reset),
-            Content::Eight => format!("{}8{}", color::Fg(color::Cyan), style::Reset),
-            Content::Bomb => format!(
+            Content::Zero => write!(f, " "),
+            Content::One => write!(f, "{}1{}", color::Fg(color::LightBlue), style::Reset),
+            Content::Two => write!(f, "{}2{}", color::Fg(color::LightGreen), style::Reset),
+            Content::Three => write!(f, "{}3{}", color::Fg(color::LightRed), style::Reset),
+            Content::Four => write!(f, "{}4{}", color::Fg(color::Magenta), style::Reset),
+            Content::Five => write!(f, "{}5{}", color::Fg(color::Red), style::Reset),
+            Content::Six => write!(f, "{}6{}", color::Fg(color::Green), style::Reset),
+            Content::Seven => write!(f, "{}7{}", color::Fg(color::Blue), style::Reset),
+            Content::Eight => write!(f, "{}8{}", color::Fg(color::Cyan), style::Reset),
+            Content::Bomb => write!(
+                f,
                 "{}{}*{}",
                 color::Fg(color::Black),
                 color::Bg(color::Red),
@@ -85,11 +88,11 @@ impl Content {
     }
 }
 
-impl ToString for Cell {
-    fn to_string(&self) -> String {
+impl fmt::Display for Cell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.surface {
-            Surface::Open => self.content.to_string(),
-            _ => self.surface.to_string(),
+            Surface::Open => write!(f, "{}", self.content),
+            _ => write!(f, "{}", self.surface),
         }
     }
 }
@@ -171,27 +174,25 @@ pub fn gen_map(
         .collect()
 }
 
-/// Open one cell in a specific position.
+/// Open one cell in a specific position, flood-filling connected zero cells.
 pub fn mine_map(
     init_at: &draw::Pos,
     now_at: &draw::Pos,
     conf: &config::GameConfig,
-    mut map: Vec<Cell>,
+    map: &mut Vec<Cell>,
     left_cover: &mut usize,
-) -> Vec<Cell> {
+) {
     let pos = (now_at.1 - init_at.1) as usize * conf.width + (now_at.0 - init_at.0) as usize;
-    let mut queue: Queue<usize> = queue![];
-    queue.add(pos).unwrap();
+    let mut queue: VecDeque<usize> = VecDeque::new();
+    queue.push_back(pos);
 
-    while queue.size() > 0 {
-        let one = queue.remove().unwrap();
-
+    while let Some(one) = queue.pop_front() {
         map[one].surface = match map[one].surface {
             Surface::Cover => {
                 match map[one].content {
                     Content::Zero => check_around_fn(conf.height, conf.width, one, |pos| {
                         if let Surface::Cover = &map[pos].surface {
-                            queue.add(pos).unwrap();
+                            queue.push_back(pos);
                         }
                     }),
                     _ => (),
@@ -203,17 +204,17 @@ pub fn mine_map(
             Surface::Flag => Surface::Flag,
         };
     }
-    map
 }
 
-/// Put a flag on specific position.
+/// Put a flag on specific position. Returns whether the surface actually
+/// changed (e.g. flagging fails when the flag budget is exhausted).
 pub fn flag_map(
     init_at: &draw::Pos,
     now_at: &draw::Pos,
     conf: &config::GameConfig,
-    mut map: Vec<Cell>,
+    map: &mut Vec<Cell>,
     flag_num: &mut usize,
-) -> (Vec<Cell>, bool) {
+) -> bool {
     let pos = (now_at.1 - init_at.1) as usize * conf.width + (now_at.0 - init_at.0) as usize;
     let pre_status = map[pos].surface.clone();
 
@@ -221,19 +222,19 @@ pub fn flag_map(
         Surface::Open => Surface::Open,
         Surface::Cover => {
             if *flag_num == conf.bomb {
-                return (map, false);
+                return false;
             }
             *flag_num += 1;
             Surface::Flag
         }
         Surface::Flag => {
             if *flag_num == 0 {
-                return (map, false);
+                return false;
             }
             *flag_num -= 1;
             Surface::Cover
         }
     };
     let now_status = map[pos].surface.clone();
-    (map, pre_status != now_status)
+    pre_status != now_status
 }

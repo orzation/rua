@@ -14,6 +14,11 @@ fn main() {
     let mut stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
     let mut rng = rand::thread_rng();
 
+    // Splash screen with a typewriter-style greeting animation.
+    draw::clean_output();
+    draw::type_writer(&init_pos, "Welcome to Rua Minesweeper!");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
     // All event start
     'start: loop {
         // Choose a difficulty.

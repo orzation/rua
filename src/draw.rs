@@ -1,7 +1,12 @@
 #![allow(dead_code)]
 
+use std::io::{self, Write};
 use std::iter;
+use std::thread::sleep;
+use std::time::Duration;
 
+use rand::rngs::ThreadRng;
+use rand::Rng;
 use termion::{clear, color, cursor, style};
 
 use crate::{config, map};
@@ -114,7 +119,7 @@ pub enum ShowMode {
 pub fn show_map(
     pos: &Pos,
     game_conf: &config::GameConfig,
-    map: &Vec<map::Cell>,
+    map: &[map::Cell],
     show_mode: ShowMode,
 ) -> Pos {
     let Pos(x, y) = *pos;
@@ -141,16 +146,188 @@ pub fn show_map(
     ret_pos
 }
 
-// Some words that said by ferris.
-const SAYS_DIFFICULTIES: [&'static str; 3] = ["Eazy as fxxk.", "It's OK.", "Really?"];
-const SAYS_END: [&'static str; 2] = ["One more time!", "Back to menu."];
-const SAYS_QUIT: &str = "Bye~";
-const SAYS_START: &str = "Ready?";
-const SAYS_WIN: [&'static str; 2] = ["Win!", "WOW, Genius!"];
-const SAYS_LOSE: [&'static str; 2] = ["You Lose!", "BOOM!"];
-const SAYS_MINE: [&'static str; 2] = ["You're safe.", "Rua!!!"];
-const SAYS_FLAG: [&'static str; 2] = ["You can't flag here.", "Good Flag."];
-const SAYS_MOVE: [&'static str; 2] = ["Move Move Move!", "Are you sure?"];
+/// Play an expanding-ring explosion animation centered on the mine that was
+/// triggered: bombs are revealed ring by ring (Chebyshev distance) with a
+/// flickering red/yellow flash, before settling into the final "lose" board.
+pub fn animate_explosion(
+    pos: &Pos,
+    conf: &config::GameConfig,
+    map: &[map::Cell],
+    hit_idx: usize,
+    rng: &mut ThreadRng,
+) {
+    let Pos(x, y) = *pos;
+    let (hy, hx) = (hit_idx / conf.width, hit_idx % conf.width);
+    let max_ring = conf.height.max(conf.width);
+
+    for ring in 0..=max_ring {
+        let mut frame = String::new();
+        for (idx, cell) in map.iter().enumerate() {
+            if !matches!(cell.content, map::Content::Bomb) {
+                continue;
+            }
+            let (cy, cx) = (idx / conf.width, idx % conf.width);
+            let dist = (cy as isize - hy as isize)
+                .unsigned_abs()
+                .max((cx as isize - hx as isize).unsigned_abs());
+            if dist != ring {
+                continue;
+            }
+            let (dx, dy) = ((idx % conf.width) as u16, (idx / conf.width) as u16);
+            let flash = if rng.gen_bool(0.5) {
+                format!(
+                    "{}{}*{}",
+                    color::Fg(color::Yellow),
+                    color::Bg(color::Red),
+                    style::Reset
+                )
+            } else {
+                format!(
+                    "{}{}*{}",
+                    color::Fg(color::White),
+                    color::Bg(color::LightRed),
+                    style::Reset
+                )
+            };
+            frame.push_str(&format!(
+                "{}{}",
+                cursor::Goto(x + dx + 1, y + dy + 1),
+                flash
+            ));
+        }
+        if !frame.is_empty() {
+            print!("{}", frame);
+            io::stdout().flush().ok();
+            sleep(Duration::from_millis(45));
+        }
+    }
+    show_map(pos, conf, map, ShowMode::Lose);
+    io::stdout().flush().ok();
+}
+
+/// Play a diagonal sparkle wave sweeping across the board on victory, before
+/// settling into the final "win" board (flags shown on every bomb).
+pub fn animate_victory(
+    pos: &Pos,
+    conf: &config::GameConfig,
+    map: &[map::Cell],
+    rng: &mut ThreadRng,
+) {
+    let Pos(x, y) = *pos;
+    let max_diag = conf.height + conf.width;
+
+    for diag in 0..max_diag {
+        let mut frame = String::new();
+        for idx in 0..map.len() {
+            let (cy, cx) = (idx / conf.width, idx % conf.width);
+            if cy + cx != diag {
+                continue;
+            }
+            let (dx, dy) = (cx as u16, cy as u16);
+            let symbol = match rng.gen_range(0..4) {
+                0 => format!("{}✦{}", color::Fg(color::LightYellow), style::Reset),
+                1 => format!("{}✧{}", color::Fg(color::LightCyan), style::Reset),
+                2 => format!("{}*{}", color::Fg(color::LightGreen), style::Reset),
+                _ => format!("{}+{}", color::Fg(color::LightMagenta), style::Reset),
+            };
+            frame.push_str(&format!(
+                "{}{}",
+                cursor::Goto(x + dx + 1, y + dy + 1),
+                symbol
+            ));
+        }
+        if !frame.is_empty() {
+            print!("{}", frame);
+            io::stdout().flush().ok();
+            sleep(Duration::from_millis(18));
+        }
+    }
+    show_map(pos, conf, map, ShowMode::Win);
+    io::stdout().flush().ok();
+}
+
+/// Briefly flash the just-placed flag so placing/removing a flag gives some
+/// tactile visual feedback instead of popping in instantly.
+pub fn animate_flag_place(now_at: &Pos, map: &[map::Cell], pos: usize) {
+    let Pos(x, y) = *now_at;
+    for _ in 0..2 {
+        print!(
+            "{}{}{}P{}",
+            cursor::Goto(x, y),
+            style::Bold,
+            color::Fg(color::Yellow),
+            style::Reset
+        );
+        io::stdout().flush().ok();
+        sleep(Duration::from_millis(55));
+        print!("{}{}", cursor::Goto(x, y), map[pos]);
+        io::stdout().flush().ok();
+        sleep(Duration::from_millis(55));
+    }
+    print!(
+        "{}{}{}P{}",
+        cursor::Goto(x, y),
+        style::Bold,
+        color::Fg(color::Yellow),
+        style::Reset
+    );
+    io::stdout().flush().ok();
+}
+
+/// Reveal `words` one character at a time for a lightweight typewriter
+/// effect, used for the intro ferris greeting.
+pub fn type_writer(pos: &Pos, words: &str) {
+    let Pos(x, y) = *pos;
+    print!("{}", cursor::Goto(x, y));
+    for ch in words.chars() {
+        print!("{}", ch);
+        io::stdout().flush().ok();
+        sleep(Duration::from_millis(28));
+    }
+}
+
+// Ferris' lines, each paired with its own (mouth, left eye, right eye) so
+// every quote gets a matching facial expression instead of one fixed face
+// reused for every variant in a category.
+type FerrisLine = (&'static str, &'static str, &'static str, &'static str);
+
+const SAYS_DIFFICULTIES: [FerrisLine; 3] = [
+    ("Ez pz, let's go~", "w", "-", "-"),  // chill smirk
+    ("Alright, bring it!", "3", "o", "o"), // pumped up
+    ("Whoa, bold much?", "o", "0", "0"),   // wide-eyed surprise
+];
+const SAYS_END: [FerrisLine; 3] = [
+    ("One more time!", "v", "$", "$"), // excited
+    ("Back to menu.", "o", "-", "-"),  // calm
+    ("Called it quits?", "u", "o", "o"), // curious
+];
+const SAYS_QUIT: FerrisLine = ("Bye~", "u", "-", "-"); // waving goodbye, eyes closed
+const SAYS_START: FerrisLine = ("Ready?", "v", "0", "0");
+const SAYS_WIN: [FerrisLine; 3] = [
+    ("Win!", "3", "^", "^"),          // big grin
+    ("WOW, Genius!", "D", "*", "*"),  // starry eyes
+    ("GG, easy game.", "w", "^", "^"), // smug smile
+];
+const SAYS_LOSE: [FerrisLine; 3] = [
+    ("You Lose!", "x", "x", "x"),  // knocked out
+    ("BOOM!", "o", "@", "@"),      // dizzy
+    ("Ouch...", "n", "T", "T"),    // crying
+];
+const SAYS_MINE: [FerrisLine; 3] = [
+    ("You're safe.", "o", "0", "0"),
+    ("Rua!!!", "D", "^", "^"),  // delighted
+    ("Phew~", "u", "-", "-"),   // relieved
+];
+const SAYS_FLAG: [FerrisLine; 3] = [
+    ("You can't flag here.", "x", "o", "o"), // rejected
+    ("Good Flag.", "u", "^", "^"),            // approving
+    ("Nice catch!", "D", "*", "*"),           // impressed
+];
+const SAYS_MOVE: [FerrisLine; 3] = [
+    ("Move Move Move!", "r", "6", "6"), // hurried, dizzy eyes
+    ("Are you sure?", "o", "?", "?"),   // suspicious
+    ("Take your time.", "u", "-", "-"), // patient
+];
 
 ///  Draw a ferris with specific str, just like this:
 ///  ```text
@@ -164,78 +341,109 @@ const SAYS_MOVE: [&'static str; 2] = ["Move Move Move!", "Are you sure?"];
 ///           '_   -   _'
 ///           / '-----' \
 /// ```
+///
+/// The whole frame is assembled into a single string and flushed with one
+/// write, instead of one `print!` (and syscall) per line/segment. This
+/// avoids the partial-frame flicker that repeated small writes can cause
+/// when the crab is redrawn frequently (e.g. on every keypress).
 fn draw_ferris_with(pos: &Pos, words: &str, mouth: &str, leye: &str, reye: &str) -> Pos {
     let len = words.len();
     let Pos(x, y) = *pos;
-    print!("{}{}", cursor::Goto(x, y + 8), clear::BeforeCursor);
-    print!("{}{}", cursor::Goto(x, y), color::Fg(color::LightRed));
-    for i in 0..len + 2 {
-        print!("{}{}", cursor::Goto(x + 1 + i as u16, y), '_');
-    }
-    print!("{}<", cursor::Goto(x, y + 1));
-    print!(" {} >", words);
-    print!("{} ", cursor::Goto(x, y + 2));
-    for i in 0..len + 2 {
-        print!("{}{}", cursor::Goto(x + 1 + i as u16, y + 2), '-');
-    }
-    print!("{}    \\", cursor::Goto(x, y + 3));
-    print!("{}     \\", cursor::Goto(x, y + 4));
-    print!("{}    _~^~^~_", cursor::Goto(x, y + 5));
-    print!(
+    let border: String = iter::repeat('_').take(len + 2).collect();
+    let underline: String = iter::repeat('-').take(len + 2).collect();
+
+    let mut frame = String::new();
+    frame.push_str(&format!("{}{}", cursor::Goto(x, y + 8), clear::BeforeCursor));
+    frame.push_str(&format!("{}{}", cursor::Goto(x, y), color::Fg(color::LightRed)));
+    frame.push_str(&format!("{}{}", cursor::Goto(x + 1, y), border));
+    frame.push_str(&format!("{}< {} >", cursor::Goto(x, y + 1), words));
+    frame.push_str(&format!("{} {}", cursor::Goto(x, y + 2), underline));
+    frame.push_str(&format!("{}    \\", cursor::Goto(x, y + 3)));
+    frame.push_str(&format!("{}     \\", cursor::Goto(x, y + 4)));
+    frame.push_str(&format!("{}    _~^~^~_", cursor::Goto(x, y + 5)));
+    frame.push_str(&format!(
         "{}\\) /  {} {}  \\ (/",
         cursor::Goto(x, y + 6),
         leye,
         reye
-    );
-    print!("{}  '_   {}   _'", cursor::Goto(x, y + 7), mouth);
-    print!(
+    ));
+    frame.push_str(&format!("{}  '_   {}   _'", cursor::Goto(x, y + 7), mouth));
+    frame.push_str(&format!(
         "{}  / '-----' \\{}",
         cursor::Goto(x, y + 8),
         style::Reset
-    );
+    ));
+
+    print!("{}", frame);
+    io::stdout().flush().ok();
     return Pos(x, y + 9);
 }
 
+/// Play a quick blink animation on the crab's eyes (open -> closed -> open)
+/// on top of an already-drawn frame, giving the mascot a bit of life instead
+/// of a fully static pose. Cheap: only the eye row is touched per frame.
+pub fn animate_ferris_blink(pos: &Pos, words: &str, mouth: &str, leye: &str, reye: &str) -> Pos {
+    let ret = draw_ferris_with(pos, words, mouth, leye, reye);
+    let Pos(x, y) = *pos;
+    sleep(Duration::from_millis(220));
+    print!("{}\\) /  -   -  \\ (/", cursor::Goto(x, y + 6));
+    io::stdout().flush().ok();
+    sleep(Duration::from_millis(90));
+    print!("{}\\) /  {} {}  \\ (/", cursor::Goto(x, y + 6), leye, reye);
+    io::stdout().flush().ok();
+    ret
+}
+
 pub fn ferris_says_start(pos: &Pos) -> Pos {
-    draw_ferris_with(pos, SAYS_START, "v", "0", "0")
+    let (words, mouth, leye, reye) = SAYS_START;
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_win(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_WIN[idx % SAYS_WIN.len()], "3", "^", "^")
+    let (words, mouth, leye, reye) = SAYS_WIN[idx % SAYS_WIN.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_lose(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_LOSE[idx % SAYS_LOSE.len()], "x", "#", "#")
+    let (words, mouth, leye, reye) = SAYS_LOSE[idx % SAYS_LOSE.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_mine(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_MINE[idx % SAYS_MINE.len()], "o", "0", "0")
+    let (words, mouth, leye, reye) = SAYS_MINE[idx % SAYS_MINE.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_flag(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_FLAG[idx % SAYS_FLAG.len()], "u", "o", "o")
+    let (words, mouth, leye, reye) = SAYS_FLAG[idx % SAYS_FLAG.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_move(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_MOVE[idx % SAYS_MOVE.len()], "r", "6", "6")
+    let (words, mouth, leye, reye) = SAYS_MOVE[idx % SAYS_MOVE.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_quit(pos: &Pos) -> Pos {
-    draw_ferris_with(pos, SAYS_QUIT, "o", "-", "-")
+    let (words, mouth, leye, reye) = SAYS_QUIT;
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_difficulty(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(
-        pos,
-        SAYS_DIFFICULTIES[idx % SAYS_DIFFICULTIES.len()],
-        "w",
-        "o",
-        "o",
-    )
+    let (words, mouth, leye, reye) = SAYS_DIFFICULTIES[idx % SAYS_DIFFICULTIES.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
+}
+
+/// Same as [`ferris_says_difficulty`] but plays a quick blink the first time
+/// the crab greets the player on the difficulty screen.
+pub fn ferris_says_difficulty_blink(pos: &Pos, idx: usize) -> Pos {
+    let (words, mouth, leye, reye) = SAYS_DIFFICULTIES[idx % SAYS_DIFFICULTIES.len()];
+    animate_ferris_blink(pos, words, mouth, leye, reye)
 }
 
 pub fn ferris_says_end(pos: &Pos, idx: usize) -> Pos {
-    draw_ferris_with(pos, SAYS_END[idx % SAYS_END.len()], "v", "$", "$")
+    let (words, mouth, leye, reye) = SAYS_END[idx % SAYS_END.len()];
+    draw_ferris_with(pos, words, mouth, leye, reye)
 }
 
 pub fn show_bomb_status(pos: &Pos, flag_num: usize) -> Pos {

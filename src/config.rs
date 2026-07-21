@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::env;
+use std::fmt;
 
 /// The basic configs for whole program, just some keymaps for now.
 #[derive(Debug)]
@@ -87,13 +88,12 @@ impl GameConfig {
     }
 }
 
-impl ToString for GameMode {
-    fn to_string(&self) -> String {
+impl fmt::Display for GameMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GameMode::Simple => "Simple",
-            GameMode::Normal => "Normal",
-            GameMode::Hard => "Hard",
+            GameMode::Simple => write!(f, "Simple"),
+            GameMode::Normal => write!(f, "Normal"),
+            GameMode::Hard => write!(f, "Hard"),
         }
-        .to_string()
     }
 }
